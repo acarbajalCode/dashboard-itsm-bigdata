@@ -42,10 +42,10 @@ try:
         if datos_garantias:
             df_garantias = pd.DataFrame(datos_garantias).drop(columns=["_id"], errors='ignore')
             
-            # Gráfico de anillo (Donut chart)
+            # Gráfico de anillo corregido con tus columnas reales
             fig_torta = px.pie(df_garantias, 
-                               names="Estado_Garantia", 
-                               values="Total_Equipos", 
+                               names="garantia_activa", 
+                               values="Total_Incidentes", 
                                hole=0.4,
                                color_discrete_sequence=px.colors.sequential.Teal)
             st.plotly_chart(fig_torta, use_container_width=True)
