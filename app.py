@@ -342,5 +342,87 @@ try:
                     else:
                          st.info("💡 **Visión General de Problemas:** Se recomienda identificar cuáles son los problemas más repetitivos e implementar manuales simples para los usuarios institucionales. Esto agilizará enormemente el trabajo de todos.")
 
+==========================
+elif pestana == "👥 Atenciones por Tipo de ID":
+    # Agrupar las atenciones por Tipo de ID del Cliente
+    df_tipo_id = (
+        df_original.groupby("ID del cliente")
+        .size()
+        .reset_index(name="Total_Atenciones")
+        .sort_values("Total_Atenciones", ascending=False)
+    )
+
+    total_atenciones = int(df_tipo_id["Total_Atenciones"].sum())
+    total_tipos = len(df_tipo_id)
+
+    # KPIs
+    k1, k2 = st.columns(2)
+
+    k1.metric(
+        "📌 Total de Atenciones",
+        f"{total_atenciones:,}"
+    )
+
+    k2.metric(
+        "🆔 Tipos de ID Registrados",
+        total_tipos
+    )
+
+    st.markdown("---")
+
+    col1, col2 = st.columns([6,4])
+
+    # ============================
+    # Gráfico de barras
+    # ============================
+    with col1:
+
+        st.subheader("📊 Atenciones por Tipo de ID")
+
+        fig_bar = px.bar(
+            df_tipo_id.sort_values("Total_Atenciones", ascending=True),
+            x="Total_Atenciones",
+            y="ID del cliente",
+            orientation="h",
+            text="Total_Atenciones",
+            color="Total_Atenciones",
+            color_continuous_scale="Blues"
+        )
+
+        fig_bar.update_layout(
+            plot_bgcolor="rgba(0,0,0,0)",
+            showlegend=False,
+            yaxis_title="",
+            xaxis_title="Cantidad de Atenciones"
+        )
+
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+    # ============================
+    # Gráfico circular
+    # ============================
+    with col2:
+
+        st.subheader("🥧 Distribución")
+
+        fig_pie = px.pie(
+            df_tipo_id,
+            values="Total_Atenciones",
+            names="ID del cliente",
+            hole=0.45
+        )
+
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    st.markdown("---")
+
+    st.subheader("📋 Resumen")
+
+    st.dataframe(
+        df_tipo_id,
+        use_container_width=True,
+        hide_index=True
+    )
+
 except Exception as e:
     st.error(f"❌ Error al conectar o procesar datos predictivos: {e}")
