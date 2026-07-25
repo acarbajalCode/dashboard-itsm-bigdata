@@ -342,7 +342,7 @@ try:
                     else:
                          st.info("💡 **Visión General de Problemas:** Se recomienda identificar cuáles son los problemas más repetitivos e implementar manuales simples para los usuarios institucionales. Esto agilizará enormemente el trabajo de todos.")
 
-==========================
+#==========================
 elif pestana == "👥 Atenciones por Tipo de ID":
     # Agrupar las atenciones por Tipo de ID del Cliente
     df_tipo_id = (
