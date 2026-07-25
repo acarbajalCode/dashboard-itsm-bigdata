@@ -433,7 +433,7 @@ try:
                 hide_index=True
             )
         else:
-            st.warning("⚠️ No se encontraron datos para la columna 'ID del cliente' en la colección principal.")
+            st.warning("⚠️ No se encontraron datos para la columna 'ID del cliente' en la colección de MongoDB. Ejecute el bloque en Databricks para poblar esta colección.")
 
 except Exception as e:
     st.error(f"❌ Error al conectar o procesar datos predictivos: {e}")
