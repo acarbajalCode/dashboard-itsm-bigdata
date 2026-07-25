@@ -171,9 +171,8 @@ try:
    # --- VISTA 4: MACHINE LEARNING (PREDICCIÓN Y TOMA DE DECISIONES) ---
     elif pestana == "🔮 Predicción de Demanda (ML)":
         st.subheader("🤖 Pronóstico y Plan de Acción Estratégico")
-        st.markdown("Proyección de demanda categorizada y cálculo de Horas-Hombre (HH) en riesgo para justificación de CapEx/OpEx.")
+        st.markdown("Proyección de demanda categorizada y motor de recomendaciones operativas.")
         
-        # 1. CONTROLES DE DECISIÓN
         col_ctrl1, col_ctrl2 = st.columns(2)
         with col_ctrl1:
             meses_futuros = st.slider("📅 Meses a proyectar en el futuro:", min_value=1, max_value=12, value=3)
@@ -182,7 +181,6 @@ try:
             categoria_pred = st.selectbox("🎯 Categorizar predicción para toma de decisiones en:", options=opciones_pred)
 
         if not df_tendencias_raw.empty:
-            # 2. PREPARACIÓN Y MOTOR PROPHET
             df_ml = df_tendencias_raw.groupby("Anio_Mes")["Volumen_Mensual"].sum().reset_index()
             df_ml['ds'] = pd.to_datetime(df_ml['Anio_Mes'] + '-01')
             df_ml = df_ml.rename(columns={'Volumen_Mensual': 'y'})
@@ -193,7 +191,6 @@ try:
                 futuro = modelo.make_future_dataframe(periods=meses_futuros, freq='MS')
                 prediccion = modelo.predict(futuro)
                 
-                # 3. GRÁFICO VISUAL
                 fig_ml = go.Figure()
                 fig_ml.add_trace(go.Scatter(x=df_ml['ds'], y=df_ml['y'], mode='lines+markers', name='Histórico Real', line=dict(color='#0066CC', width=3)))
                 fig_ml.add_trace(go.Scatter(x=prediccion['ds'].tail(meses_futuros + 1), y=prediccion['yhat'].tail(meses_futuros + 1), mode='lines+markers', name='Tendencia Esperada', line=dict(color='#FF9900', dash='dash', width=3)))
@@ -205,47 +202,57 @@ try:
                 fig_ml.update_layout(plot_bgcolor="rgba(0,0,0,0)", height=350, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
                 st.plotly_chart(fig_ml, use_container_width=True)
 
-                # 4. LIMPIEZA DE DATOS Y MATEMÁTICA (Solución del error '0')
-                # Forzamos que las columnas sean numéricas para evitar errores de cálculo
+                # --- 4. MOTOR DE LÓGICA Y MATEMÁTICA ---
                 df_brechas_clean = df_brechas_raw.copy()
                 df_brechas_clean["Volumen_Incidentes"] = pd.to_numeric(df_brechas_clean["Volumen_Incidentes"], errors='coerce').fillna(0)
                 df_brechas_clean["Minutos_Perdidos_Soporte"] = pd.to_numeric(df_brechas_clean["Minutos_Perdidos_Soporte"], errors='coerce').fillna(0)
+                df_brechas_clean["CSAT_Promedio"] = pd.to_numeric(df_brechas_clean["CSAT_Promedio"], errors='coerce').fillna(0)
 
                 tot_tickets_proyectados = int(prediccion['yhat'].tail(meses_futuros).sum())
                 
-                # Cálculo de cuotas y promedios seguros
                 if categoria_pred == "Impacto Global (Toda la Infraestructura)":
                     cuota = 1.0
                     total_vol = df_brechas_clean["Volumen_Incidentes"].sum()
-                    min_promedio = df_brechas_clean["Minutos_Perdidos_Soporte"].sum() / total_vol if total_vol > 0 else 0
+                    factor_tiempo = df_brechas_clean["Minutos_Perdidos_Soporte"].sum() / total_vol if total_vol > 0 else 0
+                    csat_promedio = df_brechas_clean["CSAT_Promedio"].mean()
                 else:
                     df_cat = df_brechas_clean[df_brechas_clean["tipo_hardware"] == categoria_pred]
                     tot_cat = df_cat["Volumen_Incidentes"].sum()
                     total_vol_global = df_brechas_clean["Volumen_Incidentes"].sum()
                     
                     cuota = tot_cat / total_vol_global if total_vol_global > 0 else 0
-                    min_promedio = df_cat["Minutos_Perdidos_Soporte"].sum() / tot_cat if tot_cat > 0 else 0
+                    factor_tiempo = df_cat["Minutos_Perdidos_Soporte"].sum() / tot_cat if tot_cat > 0 else 0
+                    csat_promedio = df_cat["CSAT_Promedio"].mean()
 
-                # Formateo final
                 tickets_esperados_cat = int(tot_tickets_proyectados * cuota)
-                horas_hombre_perdidas = int((tickets_esperados_cat * min_promedio) / 60)
-                min_promedio_display = round(min_promedio, 1)
+                impacto_total_unidades = round((tickets_esperados_cat * factor_tiempo), 1)
 
-                # 5. MÉTRICAS DE IMPACTO
+                # --- 5. MÉTRICAS DE IMPACTO ---
                 st.markdown(f"### 📊 Impacto Operativo para: **{categoria_pred}** ({meses_futuros} meses)")
                 k1, k2, k3 = st.columns(3)
                 k1.metric(label="📌 Tickets Proyectados", value=f"{tickets_esperados_cat:,}")
-                k2.metric(label="⏱️ Tiempo Prom. por Ticket", value=f"{min_promedio_display} min")
-                k3.metric(label="🔥 Horas-Hombre en Riesgo", value=f"{horas_hombre_perdidas:,} HH", delta="Tiempo improductivo", delta_color="inverse")
+                k2.metric(label="⭐ CSAT Estimado", value=f"{csat_promedio:.2f} / 5.0")
+                k3.metric(label="🔥 Carga Operativa (Unidades)", value=f"{impacto_total_unidades}", delta="Desgaste proyectado", delta_color="inverse")
 
-                # 6. RECOMENDACIONES CORPORATIVAS AUTOMATIZADAS
+                # --- 6. MOTOR DINÁMICO DE RECOMENDACIONES ---
                 st.markdown("---")
-                st.markdown("### 📋 Recomendaciones para Jefatura y Gerencia de TI")
+                st.markdown("### 📋 Plan de Acción Recomendado")
+                
+                # Clasificación de riesgos (umbrales dinámicos)
+                alerta_csat = "crítico" if csat_promedio < 3.0 else "estable"
+                alerta_volumen = "alto" if tickets_esperados_cat > 50 else "bajo"
                 
                 if categoria_pred == "Impacto Global (Toda la Infraestructura)":
-                    st.info(f"**Análisis Estratégico Global:** Se proyecta una pérdida total de **{horas_hombre_perdidas} Horas-Hombre** en los próximos {meses_futuros} meses debido a soporte de hardware. Se recomienda a la jefatura evaluar el presupuesto (CapEx) para renovar los equipos con mayor incidencia y reestructurar la asignación de tickets en el equipo técnico (OpEx) para evitar saturación y cuellos de botella en la atención diaria.")
+                    st.info(f"**Diagnóstico Global:** Para asegurar la operatividad de los servicios del SIS, se proyecta atender {tickets_esperados_cat} incidentes institucionales. El CSAT global se perfila en nivel {alerta_csat} ({csat_promedio:.2f}). Se requiere destinar recursos para auditoría de base de datos, optimización de consultas SQL y reemplazo progresivo del hardware con garantías vencidas.")
                 else:
-                    st.warning(f"**Alerta Operativa sobre {categoria_pred}:** Mantener la tendencia actual en este componente específico representará una fuga de **{horas_hombre_perdidas} Horas-Hombre**. El tiempo promedio de soporte ({min_promedio_display} minutos por ticket) impacta negativamente en los SLA del Service Desk. \n\n**Plan de Acción Sugerido:** \n1. **CapEx:** Renovar prioritariamente el inventario de {categoria_pred} que cuente con garantías vencidas.\n2. **OpEx:** Programar un ciclo de mantenimiento preventivo masivo enfocado exclusivamente en estos equipos.\n3. **Procesos:** Escalar de manera automatizada los incidentes repetitivos de esta categoría a nivel 2 de soporte para liberar la primera línea.")
+                    if alerta_csat == "crítico" and alerta_volumen == "alto":
+                        st.error(f"🚨 **Riesgo Operativo en {categoria_pred}:** Alto volumen de fallas ({tickets_esperados_cat} tickets proyectados) combinado con una satisfacción deficiente ({csat_promedio:.2f}/5). \n\n**Decisión CapEx:** Solicitar renovación urgente. El nivel de desgaste está bloqueando directamente el rendimiento institucional. La inversión en soporte correctivo ya no es financieramente viable.")
+                    elif alerta_csat == "crítico" and alerta_volumen == "bajo":
+                        st.warning(f"⚠️ **Foco de Experiencia en {categoria_pred}:** El volumen proyectado no es alarmante ({tickets_esperados_cat}), pero la satisfacción del usuario es inaceptable ({csat_promedio:.2f}/5). \n\n**Decisión OpEx y Procesos:** El problema no es la cantidad de fallas, sino que las resoluciones están siendo ineficientes. Se requiere validar protocolos de reinstalación, configuraciones de red y calidad de las intervenciones del equipo de soporte.")
+                    elif alerta_csat == "estable" and alerta_volumen == "alto":
+                        st.warning(f"📈 **Cuello de Botella en {categoria_pred}:** La satisfacción es buena, pero se proyecta un volumen de {tickets_esperados_cat} incidentes que saturará la capacidad de respuesta técnica. \n\n**Decisión OpEx:** Desplegar automatizaciones o manuales de autoservicio para los usuarios. Incrementar la frecuencia del mantenimiento preventivo masivo para aplanar la curva de tickets.")
+                    else:
+                        st.success(f"✅ **Operatividad Controlada en {categoria_pred}:** Volumen predecible ({tickets_esperados_cat} tickets) y CSAT dentro de márgenes aceptables ({csat_promedio:.2f}/5). \n\n**Decisión Estratégica:** Continuar con los mantenimientos regulares programados. Priorizar la evaluación de presupuesto en otras categorías de hardware que presenten mayores índices de criticidad.")
 
 except Exception as e:
     st.error(f"❌ Error al conectar o procesar datos predictivos: {e}")
