@@ -22,18 +22,16 @@ def cargar_datos_mongo():
     df_top = pd.DataFrame(list(db["top_incidentes"].find())).drop(columns=["_id"], errors='ignore')
     df_brechas = pd.DataFrame(list(db["brechas_servicio"].find())).drop(columns=["_id"], errors='ignore')
     df_tendencias = pd.DataFrame(list(db["tendencias_temporales"].find())).drop(columns=["_id"], errors='ignore')
-    # Nueva colección para tu base de atenciones por cliente (Ajusta "datos_originales" al nombre real de tu colección)
-    df_original = pd.DataFrame(list(db["datos_originales"].find())).drop(columns=["_id"], errors='ignore')
     
-    for df in [df_top, df_brechas, df_tendencias, df_original]:
+    for df in [df_top, df_brechas, df_tendencias]:
         if not df.empty and 'Anio_Mes' in df.columns:
             df['Anio'] = df['Anio_Mes'].str.split('-').str[0]
             df['Mes'] = df['Anio_Mes'].str.split('-').str[1]
             
-    return df_top, df_brechas, df_tendencias, df_original
+    return df_top, df_brechas, df_tendencias
 
 try:
-    df_top_raw, df_brechas_raw, df_tendencias_raw, df_original_raw = cargar_datos_mongo()
+    df_top_raw, df_brechas_raw, df_tendencias_raw = cargar_datos_mongo()
 
     # --- PANEL LATERAL DE FILTROS (SLICERS GLOBALES) ---
     st.sidebar.image("https://cdn-icons-png.flaticon.com/512/1828/1828859.png", width=50)
@@ -65,31 +63,26 @@ try:
     df_tendencias = df_tendencias_raw.copy()
     df_brechas = df_brechas_raw.copy()
     df_top = df_top_raw.copy()
-    df_original = df_original_raw.copy()
 
     if anio_sel != "Todos":
         if 'Anio' in df_tendencias.columns: df_tendencias = df_tendencias[df_tendencias['Anio'] == anio_sel]
         if 'Anio' in df_brechas.columns: df_brechas = df_brechas[df_brechas['Anio'] == anio_sel]
         if 'Anio' in df_top.columns: df_top = df_top[df_top['Anio'] == anio_sel]
-        if 'Anio' in df_original.columns: df_original = df_original[df_original['Anio'] == anio_sel]
 
     if mes_sel != "Todos":
         if 'Mes' in df_tendencias.columns: df_tendencias = df_tendencias[df_tendencias['Mes'] == mes_sel]
         if 'Mes' in df_brechas.columns: df_brechas = df_brechas[df_brechas['Mes'] == mes_sel]
         if 'Mes' in df_top.columns: df_top = df_top[df_top['Mes'] == mes_sel]
-        if 'Mes' in df_original.columns: df_original = df_original[df_original['Mes'] == mes_sel]
 
     if hardware_sel:
         if 'tipo_hardware' in df_tendencias.columns: df_tendencias = df_tendencias[df_tendencias['tipo_hardware'].isin(hardware_sel)]
         if 'tipo_hardware' in df_brechas.columns: df_brechas = df_brechas[df_brechas['tipo_hardware'].isin(hardware_sel)]
         if 'tipo_hardware' in df_top.columns: df_top = df_top[df_top['tipo_hardware'].isin(hardware_sel)]
-        if 'tipo_hardware' in df_original.columns: df_original = df_original[df_original['tipo_hardware'].isin(hardware_sel)]
 
     if garantia_sel:
         if 'estado_garantia' in df_tendencias.columns: df_tendencias = df_tendencias[df_tendencias['estado_garantia'].isin(garantia_sel)]
         if 'estado_garantia' in df_brechas.columns: df_brechas = df_brechas[df_brechas['estado_garantia'].isin(garantia_sel)]
         if 'estado_garantia' in df_top.columns: df_top = df_top[df_top['estado_garantia'].isin(garantia_sel)]
-        if 'estado_garantia' in df_original.columns: df_original = df_original[df_original['estado_garantia'].isin(garantia_sel)]
 
     # --- CABECERA PRINCIPAL ---
     st.title("📊 Dashboard Ejecutivo ITSM & Analítica Predictiva")
@@ -99,13 +92,7 @@ try:
     # --- PESTAÑAS Y NAVEGACIÓN ---
     pestana = st.radio(
         "Seleccione la vista gerencial:",
-        [
-            "📈 Visión General y Tendencias", 
-            "🛡️ Análisis de Brechas y Hardware", 
-            "🔎 Detalle y Drill-Down de Equipos", 
-            "🔮 Predicción de Demanda (ML)",
-            "👥 Atenciones por Tipo de ID"
-        ],
+        ["📈 Visión General y Tendencias", "🛡️ Análisis de Brechas y Hardware", "🔎 Detalle y Drill-Down de Equipos", "🔮 Predicción de Demanda (ML)"],
         horizontal=True
     )
     st.markdown("---")
@@ -315,7 +302,7 @@ try:
                     
                     if categoria_pred != "Visión Global":
                         if alerta_csat == "crítico":
-                            st.warning(f"⚠️ **Riesgo de Productividad:** Los problemas con **{categoria_pred}** están generando frustración en los usuarios y mala calificación del servicio. \n\n**Sugerencia:** Evaluar el reemplazo de estos equipos o exigir garantías. El tiempo y esfuerzo que el personal invierte en intentar repararlos constantemente afecta la continuidad del trabajo institucional.")
+                            st.warning(f"⚠️ **Riesgo de Productividad:** Los problemas con **{categoria_pred}** están generando frustración en los usuarios y mala calificación del servicio respuesta. \n\n**Sugerencia:** Evaluar el reemplazo de estos equipos o exigir garantías. El tiempo y esfuerzo que el personal invierte en intentar repararlos constantemente afecta la continuidad del trabajo institucional.")
                         else:
                             st.success(f"✅ **Estado Controlado:** La operatividad de los usuarios con **{categoria_pred}** se mantiene estable y predecible. \n\n**Sugerencia:** Continuar con los mantenimientos periódicos normales para asegurar que la buena experiencia de los usuarios se mantenga en el tiempo.")
                     else:
@@ -347,93 +334,13 @@ try:
                     
                     if categoria_pred != "Visión Global":
                         if porcentaje_impacto > 15.0:
-                            st.warning(f"⚠️ **Problema Frecuente:** El incidente '**{categoria_pred}**' consumirá una gran parte del tiempo del personal de soporte técnico. \n\n**Sugerencia:** Para no retrasar el trabajo, se recomienda crear guías o manuales rápidos para que los usuarios aprendan a solucionar esto por su cuenta sin necesidad de esperar a un técnico.")
+                            st.warning(f"⚠️ **Problema Frecuente:** El incidente '**{categoria_pred}**' consumirá una gran parte del tiempo del personal de soporte técnico. \n\n**Sugerencia:** Para no retrasar el trabajo en la Empresa, se recomienda crear guías o manuales rápidos para que los usuarios aprendan a solucionar esto por su cuenta sin necesidad de esperar a un técnico.")
                         elif porcentaje_impacto >= 5.0:
                             st.info(f"💡 **Oportunidad de Mejora:** El reporte de '**{categoria_pred}**' ocurre con cierta regularidad. \n\n**Sugerencia:** Asegurarse de que todo el equipo de TI conozca la forma más rápida de solucionarlo para evitar que los usuarios permanezcan inactivos por mucho tiempo.")
                         else:
                             st.success(f"✅ **Impacto Menor:** El problema '**{categoria_pred}**' no es frecuente y su impacto en la institución es mínimo. Continuar con los flujos de atención habituales.")
                     else:
                          st.info("💡 **Visión General de Problemas:** Se recomienda identificar cuáles son los problemas más repetitivos e implementar manuales simples para los usuarios institucionales. Esto agilizará enormemente el trabajo de todos.")
-
-    # =========================================================================
-    # --- VISTA 5: ATENCIONES POR TIPO DE ID ---
-    # =========================================================================
-    elif pestana == "👥 Atenciones por Tipo de ID":
-        if not df_original.empty and "ID del cliente" in df_original.columns:
-            # Agrupar las atenciones por Tipo de ID del Cliente
-            df_tipo_id = (
-                df_original.groupby("ID del cliente")
-                .size()
-                .reset_index(name="Total_Atenciones")
-                .sort_values("Total_Atenciones", ascending=False)
-            )
-
-            total_atenciones = int(df_tipo_id["Total_Atenciones"].sum())
-            total_tipos = len(df_tipo_id)
-
-            # KPIs
-            k1, k2 = st.columns(2)
-
-            k1.metric(
-                "📌 Total de Atenciones",
-                f"{total_atenciones:,}"
-            )
-
-            k2.metric(
-                "🆔 Tipos de ID Registrados",
-                total_tipos
-            )
-
-            st.markdown("---")
-
-            col1, col2 = st.columns([6,4])
-
-            # Gráfico de barras
-            with col1:
-                st.subheader("📊 Atenciones por Tipo de ID")
-
-                fig_bar = px.bar(
-                    df_tipo_id.sort_values("Total_Atenciones", ascending=True),
-                    x="Total_Atenciones",
-                    y="ID del cliente",
-                    orientation="h",
-                    text="Total_Atenciones",
-                    color="Total_Atenciones",
-                    color_continuous_scale="Blues"
-                )
-
-                fig_bar.update_layout(
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    showlegend=False,
-                    yaxis_title="",
-                    xaxis_title="Cantidad de Atenciones"
-                )
-
-                st.plotly_chart(fig_bar, use_container_width=True)
-
-            # Gráfico circular
-            with col2:
-                st.subheader("🥧 Distribución")
-
-                fig_pie = px.pie(
-                    df_tipo_id,
-                    values="Total_Atenciones",
-                    names="ID del cliente",
-                    hole=0.45
-                )
-
-                st.plotly_chart(fig_pie, use_container_width=True)
-
-            st.markdown("---")
-            st.subheader("📋 Resumen")
-
-            st.dataframe(
-                df_tipo_id,
-                use_container_width=True,
-                hide_index=True
-            )
-        else:
-            st.warning("⚠️ No se encontraron datos para la columna 'ID del cliente' en la colección de MongoDB. Ejecute el bloque en Databricks para poblar esta colección.")
 
 except Exception as e:
     st.error(f"❌ Error al conectar o procesar datos predictivos: {e}")
