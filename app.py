@@ -30,7 +30,7 @@ try:
 
     # --- PANEL LATERAL DE FILTROS GLOBALES ---
     st.sidebar.image("https://cdn-icons-png.flaticon.com/512/1828/1828859.png", width=50)
-    st.sidebar.title("🎛️ Filtros Globales")
+    st.sidebar.title("🎛️ Filtros Globales!!")
     st.sidebar.markdown("**Fase de pruebas tipo QA**")
     st.sidebar.markdown("---")
 
