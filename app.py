@@ -7,7 +7,7 @@ from prophet import Prophet
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="Dashboard Gerencial ITSM",
+    page_title="Dashboard Gerencial ITSM!",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
