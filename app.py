@@ -14,7 +14,6 @@ st.set_page_config(
 # --- FUNCIÓN DE CARGA DE DATOS ---
 @st.cache_data(ttl=300)
 def cargar_datos_mongo():
-    # Reemplaza st.secrets["MONGO_URI"] por tu URI entre comillas si pruebas localmente
     cliente = pymongo.MongoClient(st.secrets["MONGO_URI"])
     db = cliente["itsm_analytics"]
     
@@ -22,50 +21,72 @@ def cargar_datos_mongo():
     df_brechas = pd.DataFrame(list(db["brechas_servicio"].find())).drop(columns=["_id"], errors='ignore')
     df_tendencias = pd.DataFrame(list(db["tendencias_temporales"].find())).drop(columns=["_id"], errors='ignore')
     
+    # Preprocesamiento: Separar Anio_Mes en dos columnas para los Combos (Ej: "2023-07" -> "2023" y "07")
+    if not df_tendencias.empty and "Anio_Mes" in df_tendencias.columns:
+        df_tendencias['Anio'] = df_tendencias['Anio_Mes'].str.split('-').str[0]
+        df_tendencias['Mes'] = df_tendencias['Anio_Mes'].str.split('-').str[1]
+        
     return df_top, df_brechas, df_tendencias
 
 try:
     df_top_raw, df_brechas_raw, df_tendencias_raw = cargar_datos_mongo()
 
-    # --- PANEL LATERAL DE FILTROS (TIPO POWER BI SLICERS) ---
+    # --- PANEL LATERAL DE FILTROS (CASCADA TIPO POWER BI) ---
     st.sidebar.image("https://cdn-icons-png.flaticon.com/512/1828/1828859.png", width=50)
     st.sidebar.title("🎛️ Filtros Interactivos")
-    st.sidebar.markdown("*Ajuste los combos para filtrar todo el dashboard:*")
     st.sidebar.markdown("---")
 
-    # 1. Filtro de Periodo / Año-Mes
-    periodos_disponibles = sorted(df_tendencias_raw["Anio_Mes"].unique().tolist()) if not df_tendencias_raw.empty else []
-    periodos_sel = st.sidebar.multiselect(
-        "📅 Seleccionar Año - Mes:",
-        options=periodos_disponibles,
-        default=periodos_disponibles # Por defecto selecciona todos
-    )
+    # 1. FILTROS DE TIEMPO (COMBO BOXES EN CASCADA)
+    st.sidebar.markdown("### 📅 Filtro de Tiempo")
+    
+    anios_disponibles = sorted(df_tendencias_raw['Anio'].unique().tolist()) if not df_tendencias_raw.empty else []
+    
+    # Combo 1: Seleccionar Año
+    anio_sel = st.sidebar.selectbox("1. Seleccione el Año:", ["Todos"] + anios_disponibles)
+    
+    # Lógica de Cascada: Filtrar los meses dependiendo del Año seleccionado
+    if anio_sel != "Todos":
+        df_meses_filtrados = df_tendencias_raw[df_tendencias_raw['Anio'] == anio_sel]
+        meses_disponibles = sorted(df_meses_filtrados['Mes'].unique().tolist())
+    else:
+        meses_disponibles = sorted(df_tendencias_raw['Mes'].unique().tolist()) if not df_tendencias_raw.empty else []
 
-    # 2. Filtro por Tipo de Hardware
+    # Combo 2: Seleccionar Mes (Se actualiza dinámicamente)
+    mes_sel = st.sidebar.selectbox("2. Seleccione el Mes:", ["Todos"] + meses_disponibles)
+
+    st.sidebar.markdown("---")
+
+    # 2. FILTROS DE HARDWARE Y GARANTÍA (MULTIPLE SELECT PARA COMPARAR)
+    st.sidebar.markdown("### 💻 Filtro de Infraestructura")
     hardware_disponible = sorted(df_brechas_raw["tipo_hardware"].unique().tolist()) if not df_brechas_raw.empty else []
     hardware_sel = st.sidebar.multiselect(
-        "💻 Tipo de Hardware:",
+        "Tipo de Hardware:",
         options=hardware_disponible,
-        default=hardware_disponible
+        default=hardware_disponible # Por defecto marca todos
     )
 
-    # 3. Filtro por Garantía
     garantia_disponible = sorted(df_brechas_raw["estado_garantia"].unique().tolist()) if not df_brechas_raw.empty else []
     garantia_sel = st.sidebar.multiselect(
-        "🛡️ Estado de Garantía:",
+        "Estado de Garantía:",
         options=garantia_disponible,
         default=garantia_disponible
     )
 
-    st.sidebar.markdown("---")
-    st.sidebar.info("💡 **Tip Power BI:** Los filtros aplicados actualizan métricas, gráficos y tablas automáticamente.")
-
     # --- APLICACIÓN DE FILTROS A LOS DATAFRAMES ---
-    df_tendencias = df_tendencias_raw[df_tendencias_raw["Anio_Mes"].isin(periodos_sel)] if not df_tendencias_raw.empty else pd.DataFrame()
+    
+    # Aplicar filtros de tiempo a la tabla de tendencias
+    df_tendencias = df_tendencias_raw.copy()
+    if anio_sel != "Todos":
+        df_tendencias = df_tendencias[df_tendencias['Anio'] == anio_sel]
+    if mes_sel != "Todos":
+        df_tendencias = df_tendencias[df_tendencias['Mes'] == mes_sel]
+
+    # Aplicar filtros de hardware a la tabla de brechas
     df_brechas = df_brechas_raw[
         (df_brechas_raw["tipo_hardware"].isin(hardware_sel)) & 
         (df_brechas_raw["estado_garantia"].isin(garantia_sel))
     ] if not df_brechas_raw.empty else pd.DataFrame()
+    
     df_top = df_top_raw if not df_top_raw.empty else pd.DataFrame()
 
     # --- ENCABEZADO Y KPIS DINÁMICOS ---
@@ -73,12 +94,15 @@ try:
     st.caption("Visión integrada de incidentes, infraestructura y satisfacción en tiempo real")
 
     # Métricas dinámicas calculadas según los filtros
-    tot_inc = int(df_tendencias["Volumen_Mensual"].sum()) if not df_tendencias.empty else int(df_top["Total_Incidentes"].sum())
+    tot_inc = int(df_tendencias["Volumen_Mensual"].sum()) if not df_tendencias.empty else 0
+    if tot_inc == 0 and not df_top.empty: # Si el filtro de tiempo está vacío, mostramos el global
+        tot_inc = int(df_top["Total_Incidentes"].sum())
+        
     min_per = int(df_brechas["Minutos_Perdidos_Soporte"].sum()) if not df_brechas.empty else 0
     csat_prom = df_brechas["CSAT_Promedio"].mean() if not df_brechas.empty else 0.0
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("📌 Total Incidentes Filtrados", f"{tot_inc:,}")
+    k1.metric("📌 Tickets en Periodo Seleccionado", f"{tot_inc:,}")
     k2.metric("⭐ CSAT Promedio", f"{csat_prom:.2f} / 5.0")
     k3.metric("⏳ Soporte Perdido (Min)", f"{min_per:,} min")
     k4.metric("🖥️ Tipos Hardware Evaluados", f"{len(hardware_sel)} / {len(hardware_disponible)}")
@@ -86,9 +110,6 @@ try:
     st.markdown("---")
 
     # --- PESTAÑAS PRINCIPALES ---
-    tab1, tab2, tab3 = st.columns([1, 1, 1])
-
-    # NAVEGACIÓN MEDIANTE TABS INTERACTIVOS
     pestana = st.radio(
         "Seleccione la vista gerencial:",
         ["📈 Visión General y Tendencias", "🛡️ Análisis de Brechas y Hardware", "🔎 Detalle y Drill-Down de Equipos"],
@@ -102,23 +123,25 @@ try:
         col_izq, col_der = st.columns([6, 4])
 
         with col_izq:
-            st.subheader("📈 Evolución Temporal de Incidentes")
+            texto_titulo = f"📈 Evolución Temporal ({anio_sel} - {mes_sel})" if anio_sel != "Todos" else "📈 Evolución Temporal (Histórico Completo)"
+            st.subheader(texto_titulo)
+            
             if not df_tendencias.empty:
                 df_curva = df_tendencias.groupby("Anio_Mes")["Volumen_Mensual"].sum().reset_index()
                 fig_linea = px.line(
                     df_curva, x="Anio_Mes", y="Volumen_Mensual",
                     markers=True, text="Volumen_Mensual",
-                    title="Tendencia Mensual de Tickets (Filtro Aplicado)",
+                    title="Tendencia de Tickets",
                     labels={"Anio_Mes": "Periodo", "Volumen_Mensual": "Tickets"}
                 )
                 fig_linea.update_traces(textposition="top center", line_color="#0066CC")
                 fig_linea.update_layout(plot_bgcolor="rgba(0,0,0,0)", height=380)
                 st.plotly_chart(fig_linea, use_container_width=True)
             else:
-                st.warning("Sin datos para los periodos seleccionados.")
+                st.warning("No hay tickets reportados para el periodo seleccionado.")
 
         with col_der:
-            st.subheader("🔥 Top Cuellos de Botella")
+            st.subheader("🔥 Top Cuellos de Botella (Global)")
             if not df_top.empty:
                 df_top_sub = df_top.head(8).sort_values(by="Total_Incidentes", ascending=True)
                 fig_barras = px.bar(
@@ -146,9 +169,11 @@ try:
                 )
                 fig_hw.update_layout(plot_bgcolor="rgba(0,0,0,0)", height=400)
                 st.plotly_chart(fig_hw, use_container_width=True)
+            else:
+                st.warning("Seleccione al menos un tipo de hardware en el menú izquierdo.")
 
         with col_g2:
-            st.subheader("⭐ Satisfacción del Cliente (CSAT) vs Tiempo Perdido")
+            st.subheader("⭐ Satisfacción (CSAT) vs Tiempo Perdido")
             if not df_brechas.empty:
                 fig_bubble = px.scatter(
                     df_brechas, x="tipo_hardware", y="CSAT_Promedio",
@@ -162,10 +187,10 @@ try:
 
     # --- VISTA 3: DRILL-DOWN / DETALLE POR EQUIPO (SELECCIÓN DINÁMICA) ---
     elif pestana == "🔎 Detalle y Drill-Down de Equipos":
-        st.subheader("🔍 Explorador de Detalle (Drill-Down Estilo Power BI)")
-        st.markdown("Seleccione un hardware específico para abrir la ficha técnica desglosada:")
+        st.subheader("🔍 Explorador de Detalle (Ficha Técnica)")
+        st.markdown("Seleccione un hardware específico para aislar su rendimiento:")
 
-        # Combo selector de drill-down
+        # Combo selector de drill-down (Combo Box simple)
         equipo_seleccionado = st.selectbox(
             "👉 Elija un Equipo para ver su Ficha de Impacto:",
             options=hardware_disponible
@@ -181,7 +206,7 @@ try:
             min_perd_eq = df_detalle_eq["Minutos_Perdidos_Soporte"].sum()
             csat_eq = df_detalle_eq["CSAT_Promedio"].mean()
 
-            col_d1.metric("Incidentes Totales", f"{tot_inc_eq:,}")
+            col_d1.metric(f"Incidentes ({equipo_seleccionado})", f"{tot_inc_eq:,}")
             col_d2.metric("Minutos de Soporte Consumidos", f"{min_perd_eq:,} min")
             col_d3.metric("Calificación CSAT", f"{csat_eq:.2f} / 5.0")
 
