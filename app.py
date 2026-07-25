@@ -168,57 +168,74 @@ try:
                 col_d3.metric("⏳ Minutos Perdidos", f"{df_detalle_eq['Minutos_Perdidos_Soporte'].sum():,} min")
                 st.dataframe(df_detalle_eq, use_container_width=True)
 
-    # --- VISTA 4: MACHINE LEARNING (NUEVA) ---
+    # --- VISTA 4: MACHINE LEARNING (PREDICCIÓN Y TOMA DE DECISIONES) ---
     elif pestana == "🔮 Predicción de Demanda (ML)":
-        st.subheader("🤖 Algoritmo Predictivo: Facebook Prophet----")
-        st.markdown("Basado en el historial de tickets, proyectamos la demanda futura para anticipar la carga operativa.")
+        st.subheader("🤖 Pronóstico y Plan de Acción Estratégico")
+        st.markdown("Proyección de demanda categorizada y cálculo de Horas-Hombre (HH) en riesgo para justificación de CapEx/OpEx.")
         
-        # Opciones para que tomen decisiones
+        # 1. CONTROLES DE DECISIÓN (Categorización)
         col_ctrl1, col_ctrl2 = st.columns(2)
         with col_ctrl1:
-            meses_futuros = st.slider("📅 Seleccione los meses a proyectar:", min_value=1, max_value=12, value=3)
+            meses_futuros = st.slider("📅 Meses a proyectar en el futuro:", min_value=1, max_value=12, value=3)
         with col_ctrl2:
-            st.info(f"El modelo entrenará con toda la base de datos y generará un pronóstico para los próximos **{meses_futuros} meses**.")
+            opciones_pred = ["Impacto Global (Toda la Infraestructura)"] + sorted(df_brechas_raw["tipo_hardware"].unique().tolist()) if not df_brechas_raw.empty and "tipo_hardware" in df_brechas_raw.columns else ["Impacto Global (Toda la Infraestructura)"]
+            categoria_pred = st.selectbox("🎯 Categorizar predicción para tomar decisiones en:", options=opciones_pred)
 
         if not df_tendencias_raw.empty:
-            # Preparar datos para Prophet (Requiere columnas 'ds' para fecha y 'y' para valor)
+            # 2. MOTOR PROPHET (Entrenamiento)
             df_ml = df_tendencias_raw.groupby("Anio_Mes")["Volumen_Mensual"].sum().reset_index()
-            df_ml['ds'] = pd.to_datetime(df_ml['Anio_Mes'] + '-01') # Convertimos a fecha real
+            df_ml['ds'] = pd.to_datetime(df_ml['Anio_Mes'] + '-01')
             df_ml = df_ml.rename(columns={'Volumen_Mensual': 'y'})
             
-            with st.spinner("🧠 Entrenando modelo predictivo..."):
-                # Instanciar y entrenar el modelo
+            with st.spinner("🧠 Calculando proyecciones e impacto operativo..."):
                 modelo = Prophet(yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False)
                 modelo.fit(df_ml)
-                
-                # Crear proyecciones
-                futuro = modelo.make_future_dataframe(periods=meses_futuros, freq='MS') # MS = Month Start
+                futuro = modelo.make_future_dataframe(periods=meses_futuros, freq='MS')
                 prediccion = modelo.predict(futuro)
                 
-                # Gráfico interactivo
+                # 3. GRÁFICO VISUAL (Colores claros y profesionales)
                 fig_ml = go.Figure()
-                
-                # Datos Reales
-                fig_ml.add_trace(go.Scatter(x=df_ml['ds'], y=df_ml['y'], mode='lines+markers', name='Demanda Histórica', line=dict(color='blue')))
-                
-                # Predicción
-                fig_ml.add_trace(go.Scatter(x=prediccion['ds'].tail(meses_futuros + 1), y=prediccion['yhat'].tail(meses_futuros + 1), mode='lines+markers', name='Pronóstico (Demanda Esperada)', line=dict(color='orange', dash='dash')))
-                
-                # Intervalos de confianza (El margen de error)
+                fig_ml.add_trace(go.Scatter(x=df_ml['ds'], y=df_ml['y'], mode='lines+markers', name='Histórico Real', line=dict(color='#0066CC', width=3)))
+                fig_ml.add_trace(go.Scatter(x=prediccion['ds'].tail(meses_futuros + 1), y=prediccion['yhat'].tail(meses_futuros + 1), mode='lines+markers', name='Tendencia Esperada', line=dict(color='#FF9900', dash='dash', width=3)))
                 fig_ml.add_trace(go.Scatter(
                     x=pd.concat([prediccion['ds'].tail(meses_futuros + 1), prediccion['ds'].tail(meses_futuros + 1)[::-1]]),
                     y=pd.concat([prediccion['yhat_upper'].tail(meses_futuros + 1), prediccion['yhat_lower'].tail(meses_futuros + 1)[::-1]]),
-                    fill='toself', fillcolor='rgba(255, 165, 0, 0.2)', line=dict(color='rgba(255,255,255,0)'), name='Margen de Incertidumbre'
+                    fill='toself', fillcolor='rgba(255, 153, 0, 0.15)', line=dict(color='rgba(255,255,255,0)'), name='Margen de Incertidumbre'
                 ))
-                
-                fig_ml.update_layout(title="Proyección de Tickets en el Tiempo", xaxis_title="Fecha", yaxis_title="Volumen de Tickets")
+                fig_ml.update_layout(plot_bgcolor="rgba(0,0,0,0)", height=350, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
                 st.plotly_chart(fig_ml, use_container_width=True)
+
+                # 4. CÁLCULO DE HORAS HOMBRE Y CATEGORIZACIÓN
+                tot_tickets_proyectados = int(prediccion['yhat'].tail(meses_futuros).sum())
                 
-                # Tabla resumen para la toma de decisiones
-                st.markdown("#### 📋 Detalle de la Predicción (Siguientes Meses)")
-                resumen_pred = prediccion[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(meses_futuros)
-                resumen_pred.columns = ['Fecha Estimada', 'Tickets Esperados', 'Escenario Optimista (Mínimo)', 'Escenario Pesimista (Máximo)']
-                st.dataframe(resumen_pred, use_container_width=True)
+                # Calcular el peso de la categoría seleccionada y su tiempo promedio de resolución
+                if categoria_pred == "Impacto Global (Toda la Infraestructura)":
+                    cuota = 1.0
+                    min_promedio = df_brechas_raw["Minutos_Perdidos_Soporte"].sum() / df_brechas_raw["Volumen_Incidentes"].sum() if df_brechas_raw["Volumen_Incidentes"].sum() > 0 else 0
+                else:
+                    df_cat = df_brechas_raw[df_brechas_raw["tipo_hardware"] == categoria_pred]
+                    tot_cat = df_cat["Volumen_Incidentes"].sum()
+                    cuota = tot_cat / df_brechas_raw["Volumen_Incidentes"].sum() if df_brechas_raw["Volumen_Incidentes"].sum() > 0 else 0
+                    min_promedio = df_cat["Minutos_Perdidos_Soporte"].sum() / tot_cat if tot_cat > 0 else 0
+
+                tickets_esperados_cat = int(tot_tickets_proyectados * cuota)
+                horas_hombre_perdidas = int((tickets_esperados_cat * min_promedio) / 60)
+
+                # 5. MÉTRICAS DE IMPACTO (Destacadas para la gerencia)
+                st.markdown(f"### 📊 Impacto Operativo para: **{categoria_pred}** ({meses_futuros} meses)")
+                k1, k2, k3 = st.columns(3)
+                k1.metric(label="📌 Tickets Proyectados", value=f"{tickets_esperados_cat:,}")
+                k2.metric(label="⏱️ Tiempo Prom. por Ticket", value=f"{int(min_promedio)} min")
+                k3.metric(label="🔥 Horas-Hombre en Riesgo", value=f"{horas_hombre_perdidas:,} HH", delta="Tiempo perdido", delta_color="inverse")
+
+                # 6. RECOMENDACIONES GERENCIALES AUTOMATIZADAS
+                st.markdown("---")
+                st.markdown("### 📋 Recomendaciones para la Jefatura y Equipo Técnico")
+                
+                if categoria_pred == "Impacto Global (Toda la Infraestructura)":
+                    st.info(f"**Estrategia de Operaciones:** Para que la jefatura a cargo de Carla Mendoza pueda mitigar la pérdida proyectada de {horas_hombre_perdidas} Horas-Hombre globales, se requiere priorizar la renovación de garantías del Top 3 de hardware con menor CSAT. A nivel técnico, será vital distribuir la asignación de la cola de tickets equitativamente con Antony Villanueva, Mariano y el resto del equipo de soporte para evitar cuellos de botella en la fase de pruebas tipo QA y resolución diaria.")
+                else:
+                    st.warning(f"**Foco en {categoria_pred}:** Este componente generará una pérdida de {horas_hombre_perdidas} Horas-Hombre. **¿Por qué?** Porque su tiempo de soporte promedio es de {int(min_promedio)} minutos por incidente, afectando el SLA. \n\n**Plan de Acción:** \n1. **CapEx:** Renovar el lote de {categoria_pred} con garantías vencidas.\n2. **OpEx:** Ejecutar un mantenimiento preventivo masivo de estos equipos antes del próximo mes.\n3. **Soporte:** Escalar rápidamente los incidentes de este hardware al nivel 2 para no saturar al equipo de primera línea.")
 
 except Exception as e:
-    st.error(f"❌ Error al conectar o cargar datos: {e}")
+    st.error(f"❌ Error al conectar o procesar datos predictivos: {e}")
