@@ -148,7 +148,7 @@ try:
                 st.dataframe(df_detalle_eq, use_container_width=True)
 
     # --- VISTA 4: MACHINE LEARNING (NUEVA) ---
-    elif pestana == "🔮 Predicción de Demanda (ML)":
+    elif pestana == "🔮 Predicción de Demanda (ML) Nuevo":
         st.subheader("🤖 Algoritmo Predictivo: Facebook Prophet")
         st.markdown("Basado en el historial de tickets, proyectamos la demanda futura para anticipar la carga operativa.")
         
