@@ -84,8 +84,9 @@ try:
 
     st.title("📊 Dashboard Ejecutivo ITSM & Analítica Predictiva")
     st.caption("Visión integrada de incidentes, infraestructura y satisfacción afectada por filtros globales")
+    st.markdown("---")
 
-    # --- PESTAÑAS Y NAVEGACIÓN (MOVIDO ARRIBA) ---
+    # --- PESTAÑAS Y NAVEGACIÓN ---
     pestana = st.radio(
         "Seleccione la vista gerencial:",
         ["📈 Visión General y Tendencias", "🛡️ Análisis de Brechas y Hardware", "🔎 Detalle y Drill-Down de Equipos"],
@@ -93,28 +94,16 @@ try:
     )
     st.markdown("---")
 
-    # --- CÁLCULO DE KPIs CONTEXTUAL (Se ajusta según la pestaña seleccionada) ---
-    if pestana == "📈 Visión General y Tendencias":
-        tot_inc = int(df_tendencias["Volumen_Mensual"].sum()) if not df_tendencias.empty and "Volumen_Mensual" in df_tendencias.columns else 0
-        if tot_inc == 0 and not df_top.empty and "Total_Incidentes" in df_top.columns:
-            tot_inc = int(df_top["Total_Incidentes"].sum())
-    elif pestana == "🛡️ Análisis de Brechas y Hardware":
-        tot_inc = int(df_brechas["Volumen_Incidentes"].sum()) if not df_brechas.empty and "Volumen_Incidentes" in df_brechas.columns else 0
-    else:
-        tot_inc = int(df_brechas["Volumen_Incidentes"].sum()) if not df_brechas.empty and "Volumen_Incidentes" in df_brechas.columns else 0
-
-    min_per = int(df_brechas["Minutos_Perdidos_Soporte"].sum()) if not df_brechas.empty and "Minutos_Perdidos_Soporte" in df_brechas.columns else 0
-    csat_prom = df_brechas["CSAT_Promedio"].mean() if not df_brechas.empty and "CSAT_Promedio" in df_brechas.columns else 0.0
-
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("📌 Tickets en esta Vista", f"{tot_inc:,}")
-    k2.metric("⭐ CSAT Promedio", f"{csat_prom:.2f} / 5.0")
-    k3.metric("⏳ Soporte Perdido", f"{min_per:,} min")
-    k4.metric("🖥️ Tipos Hardware", f"{len(hardware_sel)}")
-    st.markdown("---")
-
     # --- VISTA 1: TENDENCIAS Y TOP INCIDENTES ---
     if pestana == "📈 Visión General y Tendencias":
+        # KPIs exclusivos para la Vista 1
+        tot_inc_tendencia = int(df_tendencias["Volumen_Mensual"].sum()) if not df_tendencias.empty else (int(df_top["Total_Incidentes"].sum()) if not df_top.empty else 0)
+        
+        k1, k2 = st.columns(2)
+        k1.metric("📌 Total Incidentes (Histórico Filtrado)", f"{tot_inc_tendencia:,}")
+        k2.metric("📋 Categorías Activas de Incidentes", f"{len(df_top) if not df_top.empty else 0}")
+        st.markdown("<br>", unsafe_allow_html=True)
+
         col_izq, col_der = st.columns([6, 4])
         with col_izq:
             st.subheader(f"📈 Evolución Temporal ({anio_sel} - {mes_sel})")
@@ -141,6 +130,18 @@ try:
 
     # --- VISTA 2: BRECHAS Y GARANTÍAS ---
     elif pestana == "🛡️ Análisis de Brechas y Hardware":
+        # KPIs exclusivos para la Vista 2
+        tot_inc_hw = int(df_brechas["Volumen_Incidentes"].sum()) if not df_brechas.empty else 0
+        min_per = int(df_brechas["Minutos_Perdidos_Soporte"].sum()) if not df_brechas.empty else 0
+        csat_prom = df_brechas["CSAT_Promedio"].mean() if not df_brechas.empty else 0.0
+
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("📌 Tickets (Infraestructura)", f"{tot_inc_hw:,}")
+        k2.metric("⭐ CSAT Promedio Global", f"{csat_prom:.2f} / 5.0")
+        k3.metric("⏳ Soporte Perdido Total", f"{min_per:,} min")
+        k4.metric("🖥️ Tipos Hardware Analizados", f"{len(df_brechas['tipo_hardware'].unique()) if not df_brechas.empty else 0}")
+        st.markdown("<br>", unsafe_allow_html=True)
+
         col_g1, col_g2 = st.columns([1, 1])
         with col_g1:
             st.subheader("⚖️ Volumen por Hardware (Filtrado)")
@@ -174,17 +175,24 @@ try:
         if not hardware_filtrado_disponible:
             st.warning("Los filtros actuales de la izquierda no dejaron ningún hardware disponible.")
         else:
-            equipo_seleccionado = st.selectbox("👉 Elija un Equipo para ver su Ficha:", options=hardware_filtrado_disponible)
+            # Combo box interno
+            equipo_seleccionado = st.selectbox("👉 Elija un Equipo Específico para ver su Ficha Técnica:", options=hardware_filtrado_disponible)
+            
             if equipo_seleccionado:
                 df_detalle_eq = df_brechas[df_brechas["tipo_hardware"] == equipo_seleccionado]
-                col_d1, col_d2, col_d3 = st.columns(3)
+                
+                # KPIs exclusivos, interactivos y ligados AL COMBO BOX
                 tot_inc_eq = df_detalle_eq["Volumen_Incidentes"].sum()
                 min_perd_eq = df_detalle_eq["Minutos_Perdidos_Soporte"].sum()
                 csat_eq = df_detalle_eq["CSAT_Promedio"].mean()
 
-                col_d1.metric(f"Incidentes", f"{tot_inc_eq:,}")
-                col_d2.metric("Minutos Perdidos", f"{min_perd_eq:,} min")
-                col_d3.metric("CSAT Promedio", f"{csat_eq:.2f} / 5.0")
+                st.markdown(f"### 📋 Rendimiento Aislado: **{equipo_seleccionado}**")
+                col_d1, col_d2, col_d3 = st.columns(3)
+                col_d1.metric(f"📌 Incidentes ({equipo_seleccionado})", f"{tot_inc_eq:,}")
+                col_d2.metric("⭐ CSAT Promedio", f"{csat_eq:.2f} / 5.0")
+                col_d3.metric("⏳ Minutos Perdidos", f"{min_perd_eq:,} min")
+                
+                st.markdown("<br>", unsafe_allow_html=True)
                 st.dataframe(df_detalle_eq.style.highlight_max(axis=0, color="#ffcccc"), use_container_width=True)
 
 except Exception as e:
