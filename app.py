@@ -168,29 +168,39 @@ try:
                 col_d3.metric("⏳ Minutos Perdidos", f"{df_detalle_eq['Minutos_Perdidos_Soporte'].sum():,} min")
                 st.dataframe(df_detalle_eq, use_container_width=True)
 
-   # --- VISTA 4: MACHINE LEARNING (PREDICCIÓN Y TOMA DE DECISIONES) ---
+# --- VISTA 4: MACHINE LEARNING (PREDICCIÓN Y TOMA DE DECISIONES) ---
     elif pestana == "🔮 Predicción de Demanda (ML)":
         st.subheader("🤖 Pronóstico y Plan de Acción Estratégico")
-        st.markdown("Proyección de demanda categorizada y motor de recomendaciones operativas.")
+        st.markdown("Proyección de demanda multidimensional para justificación de presupuesto y procesos.")
         
-        col_ctrl1, col_ctrl2 = st.columns(2)
+        # --- 1. CONTROLES DE DECISIÓN (Perspectiva Dual) ---
+        col_persp, col_ctrl1, col_ctrl2 = st.columns([1.5, 1, 2])
+        with col_persp:
+            perspectiva = st.radio("🔍 Perspectiva de Análisis:", ["🖥️ Infraestructura (Hardware)", "📂 Servicio (Tipo de Incidente)"])
         with col_ctrl1:
-            meses_futuros = st.slider("📅 Meses a proyectar en el futuro:", min_value=1, max_value=12, value=3)
+            meses_futuros = st.slider("📅 Meses a proyectar:", min_value=1, max_value=12, value=3)
         with col_ctrl2:
-            opciones_pred = ["Impacto Global (Toda la Infraestructura)"] + sorted(df_brechas_raw["tipo_hardware"].unique().tolist()) if not df_brechas_raw.empty and "tipo_hardware" in df_brechas_raw.columns else ["Impacto Global (Toda la Infraestructura)"]
-            categoria_pred = st.selectbox("🎯 Categorizar predicción para toma de decisiones en:", options=opciones_pred)
+            # Rellenar opciones según la perspectiva elegida
+            if perspectiva == "🖥️ Infraestructura (Hardware)":
+                opciones_pred = ["Impacto Global"] + sorted(df_brechas_raw["tipo_hardware"].unique().tolist()) if not df_brechas_raw.empty else ["Impacto Global"]
+            else:
+                opciones_pred = ["Impacto Global"] + sorted(df_top_raw["Titulo_Limpio"].unique().tolist()) if not df_top_raw.empty else ["Impacto Global"]
+            
+            categoria_pred = st.selectbox(f"🎯 Seleccione {perspectiva.split(' ')[1]}:", options=opciones_pred)
 
         if not df_tendencias_raw.empty:
+            # --- 2. MOTOR PROPHET (Línea Base Global) ---
             df_ml = df_tendencias_raw.groupby("Anio_Mes")["Volumen_Mensual"].sum().reset_index()
             df_ml['ds'] = pd.to_datetime(df_ml['Anio_Mes'] + '-01')
             df_ml = df_ml.rename(columns={'Volumen_Mensual': 'y'})
             
-            with st.spinner("🧠 Calculando proyecciones e impacto operativo..."):
+            with st.spinner("🧠 Calculando proyecciones institucionales..."):
                 modelo = Prophet(yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False)
                 modelo.fit(df_ml)
                 futuro = modelo.make_future_dataframe(periods=meses_futuros, freq='MS')
                 prediccion = modelo.predict(futuro)
                 
+                # --- 3. GRÁFICO VISUAL ---
                 fig_ml = go.Figure()
                 fig_ml.add_trace(go.Scatter(x=df_ml['ds'], y=df_ml['y'], mode='lines+markers', name='Histórico Real', line=dict(color='#0066CC', width=3)))
                 fig_ml.add_trace(go.Scatter(x=prediccion['ds'].tail(meses_futuros + 1), y=prediccion['yhat'].tail(meses_futuros + 1), mode='lines+markers', name='Tendencia Esperada', line=dict(color='#FF9900', dash='dash', width=3)))
@@ -199,60 +209,77 @@ try:
                     y=pd.concat([prediccion['yhat_upper'].tail(meses_futuros + 1), prediccion['yhat_lower'].tail(meses_futuros + 1)[::-1]]),
                     fill='toself', fillcolor='rgba(255, 153, 0, 0.15)', line=dict(color='rgba(255,255,255,0)'), name='Margen de Incertidumbre'
                 ))
-                fig_ml.update_layout(plot_bgcolor="rgba(0,0,0,0)", height=350, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                fig_ml.update_layout(plot_bgcolor="rgba(0,0,0,0)", height=300, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
                 st.plotly_chart(fig_ml, use_container_width=True)
 
-                # --- 4. MOTOR DE LÓGICA Y MATEMÁTICA ---
-                df_brechas_clean = df_brechas_raw.copy()
-                df_brechas_clean["Volumen_Incidentes"] = pd.to_numeric(df_brechas_clean["Volumen_Incidentes"], errors='coerce').fillna(0)
-                df_brechas_clean["Minutos_Perdidos_Soporte"] = pd.to_numeric(df_brechas_clean["Minutos_Perdidos_Soporte"], errors='coerce').fillna(0)
-                df_brechas_clean["CSAT_Promedio"] = pd.to_numeric(df_brechas_clean["CSAT_Promedio"], errors='coerce').fillna(0)
-
+                # --- 4. MOTOR LÓGICO BIFURCADO (Hardware vs Servicio) ---
                 tot_tickets_proyectados = int(prediccion['yhat'].tail(meses_futuros).sum())
                 
-                if categoria_pred == "Impacto Global (Toda la Infraestructura)":
-                    cuota = 1.0
-                    total_vol = df_brechas_clean["Volumen_Incidentes"].sum()
-                    factor_tiempo = df_brechas_clean["Minutos_Perdidos_Soporte"].sum() / total_vol if total_vol > 0 else 0
-                    csat_promedio = df_brechas_clean["CSAT_Promedio"].mean()
-                else:
-                    df_cat = df_brechas_clean[df_brechas_clean["tipo_hardware"] == categoria_pred]
-                    tot_cat = df_cat["Volumen_Incidentes"].sum()
-                    total_vol_global = df_brechas_clean["Volumen_Incidentes"].sum()
-                    
-                    cuota = tot_cat / total_vol_global if total_vol_global > 0 else 0
-                    factor_tiempo = df_cat["Minutos_Perdidos_Soporte"].sum() / tot_cat if tot_cat > 0 else 0
-                    csat_promedio = df_cat["CSAT_Promedio"].mean()
+                if perspectiva == "🖥️ Infraestructura (Hardware)":
+                    df_brechas_clean = df_brechas_raw.copy()
+                    df_brechas_clean["Volumen_Incidentes"] = pd.to_numeric(df_brechas_clean["Volumen_Incidentes"], errors='coerce').fillna(0)
+                    df_brechas_clean["Minutos_Perdidos_Soporte"] = pd.to_numeric(df_brechas_clean["Minutos_Perdidos_Soporte"], errors='coerce').fillna(0)
+                    df_brechas_clean["CSAT_Promedio"] = pd.to_numeric(df_brechas_clean["CSAT_Promedio"], errors='coerce').fillna(0)
 
-                tickets_esperados_cat = int(tot_tickets_proyectados * cuota)
-                impacto_total_unidades = round((tickets_esperados_cat * factor_tiempo), 1)
-
-                # --- 5. MÉTRICAS DE IMPACTO ---
-                st.markdown(f"### 📊 Impacto Operativo para: **{categoria_pred}** ({meses_futuros} meses)")
-                k1, k2, k3 = st.columns(3)
-                k1.metric(label="📌 Tickets Proyectados", value=f"{tickets_esperados_cat:,}")
-                k2.metric(label="⭐ CSAT Estimado", value=f"{csat_promedio:.2f} / 5.0")
-                k3.metric(label="🔥 Carga Operativa (Unidades)", value=f"{impacto_total_unidades}", delta="Desgaste proyectado", delta_color="inverse")
-
-                # --- 6. MOTOR DINÁMICO DE RECOMENDACIONES ---
-                st.markdown("---")
-                st.markdown("### 📋 Plan de Acción Recomendado")
-                
-                # Clasificación de riesgos (umbrales dinámicos)
-                alerta_csat = "crítico" if csat_promedio < 3.0 else "estable"
-                alerta_volumen = "alto" if tickets_esperados_cat > 50 else "bajo"
-                
-                if categoria_pred == "Impacto Global (Toda la Infraestructura)":
-                    st.info(f"**Diagnóstico Global:** Para asegurar la operatividad de los servicios del SIS, se proyecta atender {tickets_esperados_cat} incidentes institucionales. El CSAT global se perfila en nivel {alerta_csat} ({csat_promedio:.2f}). Se requiere destinar recursos para auditoría de base de datos, optimización de consultas SQL y reemplazo progresivo del hardware con garantías vencidas.")
-                else:
-                    if alerta_csat == "crítico" and alerta_volumen == "alto":
-                        st.error(f"🚨 **Riesgo Operativo en {categoria_pred}:** Alto volumen de fallas ({tickets_esperados_cat} tickets proyectados) combinado con una satisfacción deficiente ({csat_promedio:.2f}/5). \n\n**Decisión CapEx:** Solicitar renovación urgente. El nivel de desgaste está bloqueando directamente el rendimiento institucional. La inversión en soporte correctivo ya no es financieramente viable.")
-                    elif alerta_csat == "crítico" and alerta_volumen == "bajo":
-                        st.warning(f"⚠️ **Foco de Experiencia en {categoria_pred}:** El volumen proyectado no es alarmante ({tickets_esperados_cat}), pero la satisfacción del usuario es inaceptable ({csat_promedio:.2f}/5). \n\n**Decisión OpEx y Procesos:** El problema no es la cantidad de fallas, sino que las resoluciones están siendo ineficientes. Se requiere validar protocolos de reinstalación, configuraciones de red y calidad de las intervenciones del equipo de soporte.")
-                    elif alerta_csat == "estable" and alerta_volumen == "alto":
-                        st.warning(f"📈 **Cuello de Botella en {categoria_pred}:** La satisfacción es buena, pero se proyecta un volumen de {tickets_esperados_cat} incidentes que saturará la capacidad de respuesta técnica. \n\n**Decisión OpEx:** Desplegar automatizaciones o manuales de autoservicio para los usuarios. Incrementar la frecuencia del mantenimiento preventivo masivo para aplanar la curva de tickets.")
+                    if categoria_pred == "Impacto Global":
+                        cuota = 1.0
+                        total_vol = df_brechas_clean["Volumen_Incidentes"].sum()
+                        factor_tiempo = df_brechas_clean["Minutos_Perdidos_Soporte"].sum() / total_vol if total_vol > 0 else 0
+                        csat_promedio = df_brechas_clean["CSAT_Promedio"].mean()
                     else:
-                        st.success(f"✅ **Operatividad Controlada en {categoria_pred}:** Volumen predecible ({tickets_esperados_cat} tickets) y CSAT dentro de márgenes aceptables ({csat_promedio:.2f}/5). \n\n**Decisión Estratégica:** Continuar con los mantenimientos regulares programados. Priorizar la evaluación de presupuesto en otras categorías de hardware que presenten mayores índices de criticidad.")
+                        df_cat = df_brechas_clean[df_brechas_clean["tipo_hardware"] == categoria_pred]
+                        tot_cat = df_cat["Volumen_Incidentes"].sum()
+                        total_vol_global = df_brechas_clean["Volumen_Incidentes"].sum()
+                        cuota = tot_cat / total_vol_global if total_vol_global > 0 else 0
+                        factor_tiempo = df_cat["Minutos_Perdidos_Soporte"].sum() / tot_cat if tot_cat > 0 else 0
+                        csat_promedio = df_cat["CSAT_Promedio"].mean()
+
+                    tickets_esperados_cat = int(tot_tickets_proyectados * cuota)
+                    impacto_total = round((tickets_esperados_cat * factor_tiempo), 1)
+
+                    st.markdown(f"### 📊 Proyección de Hardware: **{categoria_pred}**")
+                    k1, k2, k3 = st.columns(3)
+                    k1.metric("📌 Tickets Proyectados", f"{tickets_esperados_cat:,}")
+                    k2.metric("⭐ CSAT Estimado", f"{csat_promedio:.2f} / 5.0")
+                    k3.metric("🔥 Carga Operativa", f"{impacto_total} Unidades")
+
+                    # Lógica de hardware
+                    alerta_csat = "crítico" if csat_promedio < 3.0 else "estable"
+                    if categoria_pred != "Impacto Global":
+                        if alerta_csat == "crítico":
+                            st.error(f"🚨 **Riesgo en Hardware:** Se requiere evaluación presupuestal (CapEx) urgente para {categoria_pred}. El desgaste físico está mermando directamente la operatividad y los niveles de satisfacción.")
+                        else:
+                            st.success(f"✅ **Hardware Controlado:** Los niveles de satisfacción para {categoria_pred} son estables. Mantener los mantenimientos preventivos estándar.")
+
+                else:
+                    # Perspectiva de TIPOS DE INCIDENTE
+                    df_top_clean = df_top_raw.copy()
+                    df_top_clean["Total_Incidentes"] = pd.to_numeric(df_top_clean["Total_Incidentes"], errors='coerce').fillna(0)
+                    
+                    if categoria_pred == "Impacto Global":
+                        cuota = 1.0
+                    else:
+                        df_cat = df_top_clean[df_top_clean["Titulo_Limpio"] == categoria_pred]
+                        tot_cat = df_cat["Total_Incidentes"].sum()
+                        total_vol_global = df_top_clean["Total_Incidentes"].sum()
+                        cuota = tot_cat / total_vol_global if total_vol_global > 0 else 0
+
+                    tickets_esperados_cat = int(tot_tickets_proyectados * cuota)
+                    porcentaje_impacto = round((cuota * 100), 1)
+
+                    st.markdown(f"### 📊 Proyección de Servicio: **{categoria_pred}**")
+                    k1, k2 = st.columns(2)
+                    k1.metric("📌 Demanda Proyectada", f"{tickets_esperados_cat:,} tickets")
+                    k2.metric("📉 Peso en Mesa de Ayuda", f"{porcentaje_impacto}% del total")
+
+                    # Lógica de tipos de incidente
+                    if categoria_pred != "Impacto Global":
+                        if porcentaje_impacto > 15.0:
+                            st.warning(f"⚠️ **Cuello de Botella Operativo:** El incidente '{categoria_pred}' representa una carga masiva en el backlog ({porcentaje_impacto}%). \n\n**Plan de Acción:** Implementar automatizaciones en el sistema, habilitar portales de autoservicio o crear manuales interactivos para reducir la dependencia hacia el nivel 1 de soporte.")
+                        elif porcentaje_impacto >= 5.0:
+                            st.info(f"💡 **Oportunidad de Mejora:** Este incidente mantiene una carga moderada. Se recomienda documentar las soluciones frecuentes en la base de conocimiento para acelerar los tiempos de resolución en futuras incidencias.")
+                        else:
+                            st.success(f"✅ **Baja Incidencia:** El reporte de '{categoria_pred}' es marginal. Los protocolos actuales de atención para esta categoría son efectivos.")
 
 except Exception as e:
     st.error(f"❌ Error al conectar o procesar datos predictivos: {e}")
