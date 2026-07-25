@@ -302,7 +302,7 @@ try:
                     
                     if categoria_pred != "Visión Global":
                         if alerta_csat == "crítico":
-                            st.warning(f"⚠️ **Riesgo de Productividad:** Los problemas con **{categoria_pred}** están generando frustración en los usuarios y mala calificación del servicio en el SIS. \n\n**Sugerencia:** Evaluar el reemplazo de estos equipos o exigir garantías. El tiempo y esfuerzo que el personal invierte en intentar repararlos constantemente afecta la continuidad del trabajo institucional.")
+                            st.warning(f"⚠️ **Riesgo de Productividad:** Los problemas con **{categoria_pred}** están generando frustración en los usuarios y mala calificación del servicio respuesta. \n\n**Sugerencia:** Evaluar el reemplazo de estos equipos o exigir garantías. El tiempo y esfuerzo que el personal invierte en intentar repararlos constantemente afecta la continuidad del trabajo institucional.")
                         else:
                             st.success(f"✅ **Estado Controlado:** La operatividad de los usuarios con **{categoria_pred}** se mantiene estable y predecible. \n\n**Sugerencia:** Continuar con los mantenimientos periódicos normales para asegurar que la buena experiencia de los usuarios se mantenga en el tiempo.")
                     else:
@@ -334,7 +334,7 @@ try:
                     
                     if categoria_pred != "Visión Global":
                         if porcentaje_impacto > 15.0:
-                            st.warning(f"⚠️ **Problema Frecuente:** El incidente '**{categoria_pred}**' consumirá una gran parte del tiempo del personal de soporte técnico. \n\n**Sugerencia:** Para no retrasar el trabajo en el SIS, se recomienda crear guías o manuales rápidos para que los usuarios aprendan a solucionar esto por su cuenta sin necesidad de esperar a un técnico.")
+                            st.warning(f"⚠️ **Problema Frecuente:** El incidente '**{categoria_pred}**' consumirá una gran parte del tiempo del personal de soporte técnico. \n\n**Sugerencia:** Para no retrasar el trabajo en la Empresa, se recomienda crear guías o manuales rápidos para que los usuarios aprendan a solucionar esto por su cuenta sin necesidad de esperar a un técnico.")
                         elif porcentaje_impacto >= 5.0:
                             st.info(f"💡 **Oportunidad de Mejora:** El reporte de '**{categoria_pred}**' ocurre con cierta regularidad. \n\n**Sugerencia:** Asegurarse de que todo el equipo de TI conozca la forma más rápida de solucionarlo para evitar que los usuarios permanezcan inactivos por mucho tiempo.")
                         else:
