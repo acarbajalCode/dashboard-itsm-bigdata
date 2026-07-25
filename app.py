@@ -168,21 +168,21 @@ try:
                 col_d3.metric("⏳ Minutos Perdidos", f"{df_detalle_eq['Minutos_Perdidos_Soporte'].sum():,} min")
                 st.dataframe(df_detalle_eq, use_container_width=True)
 
-    # --- VISTA 4: MACHINE LEARNING (PREDICCIÓN Y TOMA DE DECISIONES) ---
+   # --- VISTA 4: MACHINE LEARNING (PREDICCIÓN Y TOMA DE DECISIONES) ---
     elif pestana == "🔮 Predicción de Demanda (ML)":
         st.subheader("🤖 Pronóstico y Plan de Acción Estratégico")
         st.markdown("Proyección de demanda categorizada y cálculo de Horas-Hombre (HH) en riesgo para justificación de CapEx/OpEx.")
         
-        # 1. CONTROLES DE DECISIÓN (Categorización)
+        # 1. CONTROLES DE DECISIÓN
         col_ctrl1, col_ctrl2 = st.columns(2)
         with col_ctrl1:
             meses_futuros = st.slider("📅 Meses a proyectar en el futuro:", min_value=1, max_value=12, value=3)
         with col_ctrl2:
             opciones_pred = ["Impacto Global (Toda la Infraestructura)"] + sorted(df_brechas_raw["tipo_hardware"].unique().tolist()) if not df_brechas_raw.empty and "tipo_hardware" in df_brechas_raw.columns else ["Impacto Global (Toda la Infraestructura)"]
-            categoria_pred = st.selectbox("🎯 Categorizar predicción para tomar decisiones en:", options=opciones_pred)
+            categoria_pred = st.selectbox("🎯 Categorizar predicción para toma de decisiones en:", options=opciones_pred)
 
         if not df_tendencias_raw.empty:
-            # 2. MOTOR PROPHET (Entrenamiento)
+            # 2. PREPARACIÓN Y MOTOR PROPHET
             df_ml = df_tendencias_raw.groupby("Anio_Mes")["Volumen_Mensual"].sum().reset_index()
             df_ml['ds'] = pd.to_datetime(df_ml['Anio_Mes'] + '-01')
             df_ml = df_ml.rename(columns={'Volumen_Mensual': 'y'})
@@ -193,7 +193,7 @@ try:
                 futuro = modelo.make_future_dataframe(periods=meses_futuros, freq='MS')
                 prediccion = modelo.predict(futuro)
                 
-                # 3. GRÁFICO VISUAL (Colores claros y profesionales)
+                # 3. GRÁFICO VISUAL
                 fig_ml = go.Figure()
                 fig_ml.add_trace(go.Scatter(x=df_ml['ds'], y=df_ml['y'], mode='lines+markers', name='Histórico Real', line=dict(color='#0066CC', width=3)))
                 fig_ml.add_trace(go.Scatter(x=prediccion['ds'].tail(meses_futuros + 1), y=prediccion['yhat'].tail(meses_futuros + 1), mode='lines+markers', name='Tendencia Esperada', line=dict(color='#FF9900', dash='dash', width=3)))
@@ -205,37 +205,47 @@ try:
                 fig_ml.update_layout(plot_bgcolor="rgba(0,0,0,0)", height=350, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
                 st.plotly_chart(fig_ml, use_container_width=True)
 
-                # 4. CÁLCULO DE HORAS HOMBRE Y CATEGORIZACIÓN
+                # 4. LIMPIEZA DE DATOS Y MATEMÁTICA (Solución del error '0')
+                # Forzamos que las columnas sean numéricas para evitar errores de cálculo
+                df_brechas_clean = df_brechas_raw.copy()
+                df_brechas_clean["Volumen_Incidentes"] = pd.to_numeric(df_brechas_clean["Volumen_Incidentes"], errors='coerce').fillna(0)
+                df_brechas_clean["Minutos_Perdidos_Soporte"] = pd.to_numeric(df_brechas_clean["Minutos_Perdidos_Soporte"], errors='coerce').fillna(0)
+
                 tot_tickets_proyectados = int(prediccion['yhat'].tail(meses_futuros).sum())
                 
-                # Calcular el peso de la categoría seleccionada y su tiempo promedio de resolución
+                # Cálculo de cuotas y promedios seguros
                 if categoria_pred == "Impacto Global (Toda la Infraestructura)":
                     cuota = 1.0
-                    min_promedio = df_brechas_raw["Minutos_Perdidos_Soporte"].sum() / df_brechas_raw["Volumen_Incidentes"].sum() if df_brechas_raw["Volumen_Incidentes"].sum() > 0 else 0
+                    total_vol = df_brechas_clean["Volumen_Incidentes"].sum()
+                    min_promedio = df_brechas_clean["Minutos_Perdidos_Soporte"].sum() / total_vol if total_vol > 0 else 0
                 else:
-                    df_cat = df_brechas_raw[df_brechas_raw["tipo_hardware"] == categoria_pred]
+                    df_cat = df_brechas_clean[df_brechas_clean["tipo_hardware"] == categoria_pred]
                     tot_cat = df_cat["Volumen_Incidentes"].sum()
-                    cuota = tot_cat / df_brechas_raw["Volumen_Incidentes"].sum() if df_brechas_raw["Volumen_Incidentes"].sum() > 0 else 0
+                    total_vol_global = df_brechas_clean["Volumen_Incidentes"].sum()
+                    
+                    cuota = tot_cat / total_vol_global if total_vol_global > 0 else 0
                     min_promedio = df_cat["Minutos_Perdidos_Soporte"].sum() / tot_cat if tot_cat > 0 else 0
 
+                # Formateo final
                 tickets_esperados_cat = int(tot_tickets_proyectados * cuota)
                 horas_hombre_perdidas = int((tickets_esperados_cat * min_promedio) / 60)
+                min_promedio_display = round(min_promedio, 1)
 
-                # 5. MÉTRICAS DE IMPACTO (Destacadas para la gerencia)
+                # 5. MÉTRICAS DE IMPACTO
                 st.markdown(f"### 📊 Impacto Operativo para: **{categoria_pred}** ({meses_futuros} meses)")
                 k1, k2, k3 = st.columns(3)
                 k1.metric(label="📌 Tickets Proyectados", value=f"{tickets_esperados_cat:,}")
-                k2.metric(label="⏱️ Tiempo Prom. por Ticket", value=f"{int(min_promedio)} min")
-                k3.metric(label="🔥 Horas-Hombre en Riesgo", value=f"{horas_hombre_perdidas:,} HH", delta="Tiempo perdido", delta_color="inverse")
+                k2.metric(label="⏱️ Tiempo Prom. por Ticket", value=f"{min_promedio_display} min")
+                k3.metric(label="🔥 Horas-Hombre en Riesgo", value=f"{horas_hombre_perdidas:,} HH", delta="Tiempo improductivo", delta_color="inverse")
 
-                # 6. RECOMENDACIONES GERENCIALES AUTOMATIZADAS
+                # 6. RECOMENDACIONES CORPORATIVAS AUTOMATIZADAS
                 st.markdown("---")
-                st.markdown("### 📋 Recomendaciones para la Jefatura y Equipo Técnico")
+                st.markdown("### 📋 Recomendaciones para Jefatura y Gerencia de TI")
                 
                 if categoria_pred == "Impacto Global (Toda la Infraestructura)":
-                    st.info(f"**Estrategia de Operaciones:** Para que la jefatura a cargo de Carla Mendoza pueda mitigar la pérdida proyectada de {horas_hombre_perdidas} Horas-Hombre globales, se requiere priorizar la renovación de garantías del Top 3 de hardware con menor CSAT. A nivel técnico, será vital distribuir la asignación de la cola de tickets equitativamente con Antony Villanueva, Mariano y el resto del equipo de soporte para evitar cuellos de botella en la fase de pruebas tipo QA y resolución diaria.")
+                    st.info(f"**Análisis Estratégico Global:** Se proyecta una pérdida total de **{horas_hombre_perdidas} Horas-Hombre** en los próximos {meses_futuros} meses debido a soporte de hardware. Se recomienda a la jefatura evaluar el presupuesto (CapEx) para renovar los equipos con mayor incidencia y reestructurar la asignación de tickets en el equipo técnico (OpEx) para evitar saturación y cuellos de botella en la atención diaria.")
                 else:
-                    st.warning(f"**Foco en {categoria_pred}:** Este componente generará una pérdida de {horas_hombre_perdidas} Horas-Hombre. **¿Por qué?** Porque su tiempo de soporte promedio es de {int(min_promedio)} minutos por incidente, afectando el SLA. \n\n**Plan de Acción:** \n1. **CapEx:** Renovar el lote de {categoria_pred} con garantías vencidas.\n2. **OpEx:** Ejecutar un mantenimiento preventivo masivo de estos equipos antes del próximo mes.\n3. **Soporte:** Escalar rápidamente los incidentes de este hardware al nivel 2 para no saturar al equipo de primera línea.")
+                    st.warning(f"**Alerta Operativa sobre {categoria_pred}:** Mantener la tendencia actual en este componente específico representará una fuga de **{horas_hombre_perdidas} Horas-Hombre**. El tiempo promedio de soporte ({min_promedio_display} minutos por ticket) impacta negativamente en los SLA del Service Desk. \n\n**Plan de Acción Sugerido:** \n1. **CapEx:** Renovar prioritariamente el inventario de {categoria_pred} que cuente con garantías vencidas.\n2. **OpEx:** Programar un ciclo de mantenimiento preventivo masivo enfocado exclusivamente en estos equipos.\n3. **Procesos:** Escalar de manera automatizada los incidentes repetitivos de esta categoría a nivel 2 de soporte para liberar la primera línea.")
 
 except Exception as e:
     st.error(f"❌ Error al conectar o procesar datos predictivos: {e}")
