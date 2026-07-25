@@ -86,7 +86,7 @@ try:
     )
     st.markdown("---")
 
-    # --- VISTA 1: TENDENCIAS Y TOP INCIDENTES ---
+   # --- VISTA 1: TENDENCIAS Y TOP INCIDENTES ---
     if pestana == "📈 Visión General y Tendencias":
         tot_inc_tendencia = int(df_tendencias["Volumen_Mensual"].sum()) if not df_tendencias.empty else 0
         k1, k2 = st.columns(2)
@@ -95,6 +95,7 @@ try:
         st.markdown("<br>", unsafe_allow_html=True)
 
         col_izq, col_der = st.columns([6, 4])
+        
         with col_izq:
             st.subheader(f"📈 Evolución Temporal ({anio_sel} - {mes_sel})")
             if not df_tendencias.empty:
@@ -102,12 +103,25 @@ try:
                 fig_linea = px.line(df_curva, x="Anio_Mes", y="Volumen_Mensual", markers=True)
                 fig_linea.update_traces(line_color="#0066CC")
                 st.plotly_chart(fig_linea, use_container_width=True)
+                
         with col_der:
-            st.subheader("🔥 Top Incidentes (Histórico)")
+            st.subheader("🔥 Ranking de Incidentes")
             if not df_top.empty:
-                df_top_sub = df_top.head(8).sort_values(by="Total_Incidentes", ascending=True)
-                fig_barras = px.bar(df_top_sub, x="Total_Incidentes", y="Titulo_Limpio", orientation='h', text="Total_Incidentes")
+                # 1. Slider interactivo para elegir cuántos incidentes graficar
+                max_top = len(df_top)
+                top_n = st.slider("Ajustar cantidad a visualizar en el gráfico:", min_value=3, max_value=max_top, value=10)
+                
+                df_top_sub = df_top.head(top_n).sort_values(by="Total_Incidentes", ascending=True)
+                fig_barras = px.bar(
+                    df_top_sub, x="Total_Incidentes", y="Titulo_Limpio", orientation='h', 
+                    text="Total_Incidentes", color="Total_Incidentes", color_continuous_scale="Blues"
+                )
+                fig_barras.update_layout(plot_bgcolor="rgba(0,0,0,0)", height=400, showlegend=False)
                 st.plotly_chart(fig_barras, use_container_width=True)
+                
+                # 2. Expansor para ver el 100% de la data cruda
+                with st.expander("📋 Ver el listado histórico completo (Todas las categorías)"):
+                    st.dataframe(df_top, use_container_width=True)
 
     # --- VISTA 2: BRECHAS Y GARANTÍAS ---
     elif pestana == "🛡️ Análisis de Brechas y Hardware":
