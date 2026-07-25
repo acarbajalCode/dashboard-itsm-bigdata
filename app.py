@@ -112,11 +112,18 @@ try:
                 top_n = st.slider("Ajustar cantidad a visualizar en el gráfico:", min_value=3, max_value=max_top, value=10)
                 
                 df_top_sub = df_top.head(top_n).sort_values(by="Total_Incidentes", ascending=True)
+                
+                # --- EL TRUCO MAGICO: Altura Dinámica ---
+                # Le damos 35 pixeles de altura garantizada a cada barra. Si son pocas, el mínimo es 400px.
+                altura_dinamica = max(400, top_n * 35) 
+
                 fig_barras = px.bar(
                     df_top_sub, x="Total_Incidentes", y="Titulo_Limpio", orientation='h', 
                     text="Total_Incidentes", color="Total_Incidentes", color_continuous_scale="Blues"
                 )
-                fig_barras.update_layout(plot_bgcolor="rgba(0,0,0,0)", height=400, showlegend=False)
+                
+                # Aplicamos la altura dinámica al layout
+                fig_barras.update_layout(plot_bgcolor="rgba(0,0,0,0)", height=altura_dinamica, showlegend=False)
                 st.plotly_chart(fig_barras, use_container_width=True)
                 
                 # 2. Expansor para ver el 100% de la data cruda
