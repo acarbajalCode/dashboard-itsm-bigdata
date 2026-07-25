@@ -21,7 +21,6 @@ def cargar_datos_mongo():
     df_brechas = pd.DataFrame(list(db["brechas_servicio"].find())).drop(columns=["_id"], errors='ignore')
     df_tendencias = pd.DataFrame(list(db["tendencias_temporales"].find())).drop(columns=["_id"], errors='ignore')
     
-    # Preparar columnas de Año y Mes en TODAS las tablas que tengan 'Anio_Mes'
     for df in [df_top, df_brechas, df_tendencias]:
         if not df.empty and 'Anio_Mes' in df.columns:
             df['Anio'] = df['Anio_Mes'].str.split('-').str[0]
@@ -38,10 +37,8 @@ try:
     st.sidebar.markdown("**Fase de pruebas tipo QA**")
     st.sidebar.markdown("---")
 
-    # 1. Filtros de Tiempo en Cascada
     st.sidebar.markdown("### 📅 Filtro de Tiempo")
     anios_disponibles = sorted(df_tendencias_raw['Anio'].unique().tolist()) if not df_tendencias_raw.empty and 'Anio' in df_tendencias_raw.columns else []
-    
     anio_sel = st.sidebar.selectbox("1. Seleccione el Año:", ["Todos"] + anios_disponibles)
     
     if anio_sel != "Todos":
@@ -53,7 +50,6 @@ try:
     mes_sel = st.sidebar.selectbox("2. Seleccione el Mes:", ["Todos"] + meses_disponibles)
     st.sidebar.markdown("---")
 
-    # 2. Filtros de Hardware y Garantía
     st.sidebar.markdown("### 💻 Filtro de Infraestructura")
     hardware_disponible = sorted(df_brechas_raw["tipo_hardware"].unique().tolist()) if not df_brechas_raw.empty and "tipo_hardware" in df_brechas_raw.columns else []
     hardware_sel = st.sidebar.multiselect("Tipo de Hardware:", options=hardware_disponible, default=hardware_disponible)
@@ -61,13 +57,11 @@ try:
     garantia_disponible = sorted(df_brechas_raw["estado_garantia"].unique().tolist()) if not df_brechas_raw.empty and "estado_garantia" in df_brechas_raw.columns else []
     garantia_sel = st.sidebar.multiselect("Estado de Garantía:", options=garantia_disponible, default=garantia_disponible)
 
-    # --- MOTOR DE FILTRADO CRUZADO (ESTILO POWER BI) ---
-    # Copiamos los raw dataframes para no alterar el original
+    # --- MOTOR DE FILTRADO CRUZADO ---
     df_tendencias = df_tendencias_raw.copy()
     df_brechas = df_brechas_raw.copy()
     df_top = df_top_raw.copy()
 
-    # Filtramos Tiempo en TODAS las tablas que tengan las columnas
     if anio_sel != "Todos":
         if 'Anio' in df_tendencias.columns: df_tendencias = df_tendencias[df_tendencias['Anio'] == anio_sel]
         if 'Anio' in df_brechas.columns: df_brechas = df_brechas[df_brechas['Anio'] == anio_sel]
@@ -78,7 +72,6 @@ try:
         if 'Mes' in df_brechas.columns: df_brechas = df_brechas[df_brechas['Mes'] == mes_sel]
         if 'Mes' in df_top.columns: df_top = df_top[df_top['Mes'] == mes_sel]
 
-    # Filtramos Hardware/Garantía en TODAS las tablas que tengan las columnas
     if hardware_sel:
         if 'tipo_hardware' in df_tendencias.columns: df_tendencias = df_tendencias[df_tendencias['tipo_hardware'].isin(hardware_sel)]
         if 'tipo_hardware' in df_brechas.columns: df_brechas = df_brechas[df_brechas['tipo_hardware'].isin(hardware_sel)]
@@ -89,25 +82,10 @@ try:
         if 'estado_garantia' in df_brechas.columns: df_brechas = df_brechas[df_brechas['estado_garantia'].isin(garantia_sel)]
         if 'estado_garantia' in df_top.columns: df_top = df_top[df_top['estado_garantia'].isin(garantia_sel)]
 
-    # --- ENCABEZADO Y KPIS DINÁMICOS (Recalculados sobre la data filtrada) ---
     st.title("📊 Dashboard Ejecutivo ITSM & Analítica Predictiva")
     st.caption("Visión integrada de incidentes, infraestructura y satisfacción afectada por filtros globales")
 
-    tot_inc = int(df_tendencias["Volumen_Mensual"].sum()) if not df_tendencias.empty and "Volumen_Mensual" in df_tendencias.columns else 0
-    if tot_inc == 0 and not df_top.empty and "Total_Incidentes" in df_top.columns: 
-        tot_inc = int(df_top["Total_Incidentes"].sum())
-        
-    min_per = int(df_brechas["Minutos_Perdidos_Soporte"].sum()) if not df_brechas.empty and "Minutos_Perdidos_Soporte" in df_brechas.columns else 0
-    csat_prom = df_brechas["CSAT_Promedio"].mean() if not df_brechas.empty and "CSAT_Promedio" in df_brechas.columns else 0.0
-
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("📌 Tickets Filtrados", f"{tot_inc:,}")
-    k2.metric("⭐ CSAT Promedio", f"{csat_prom:.2f} / 5.0")
-    k3.metric("⏳ Soporte Perdido", f"{min_per:,} min")
-    k4.metric("🖥️ Tipos Hardware", f"{len(hardware_sel)}")
-    st.markdown("---")
-
-    # --- PESTAÑAS Y NAVEGACIÓN ---
+    # --- PESTAÑAS Y NAVEGACIÓN (MOVIDO ARRIBA) ---
     pestana = st.radio(
         "Seleccione la vista gerencial:",
         ["📈 Visión General y Tendencias", "🛡️ Análisis de Brechas y Hardware", "🔎 Detalle y Drill-Down de Equipos"],
@@ -115,10 +93,29 @@ try:
     )
     st.markdown("---")
 
+    # --- CÁLCULO DE KPIs CONTEXTUAL (Se ajusta según la pestaña seleccionada) ---
+    if pestana == "📈 Visión General y Tendencias":
+        tot_inc = int(df_tendencias["Volumen_Mensual"].sum()) if not df_tendencias.empty and "Volumen_Mensual" in df_tendencias.columns else 0
+        if tot_inc == 0 and not df_top.empty and "Total_Incidentes" in df_top.columns:
+            tot_inc = int(df_top["Total_Incidentes"].sum())
+    elif pestana == "🛡️ Análisis de Brechas y Hardware":
+        tot_inc = int(df_brechas["Volumen_Incidentes"].sum()) if not df_brechas.empty and "Volumen_Incidentes" in df_brechas.columns else 0
+    else:
+        tot_inc = int(df_brechas["Volumen_Incidentes"].sum()) if not df_brechas.empty and "Volumen_Incidentes" in df_brechas.columns else 0
+
+    min_per = int(df_brechas["Minutos_Perdidos_Soporte"].sum()) if not df_brechas.empty and "Minutos_Perdidos_Soporte" in df_brechas.columns else 0
+    csat_prom = df_brechas["CSAT_Promedio"].mean() if not df_brechas.empty and "CSAT_Promedio" in df_brechas.columns else 0.0
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("📌 Tickets en esta Vista", f"{tot_inc:,}")
+    k2.metric("⭐ CSAT Promedio", f"{csat_prom:.2f} / 5.0")
+    k3.metric("⏳ Soporte Perdido", f"{min_per:,} min")
+    k4.metric("🖥️ Tipos Hardware", f"{len(hardware_sel)}")
+    st.markdown("---")
+
     # --- VISTA 1: TENDENCIAS Y TOP INCIDENTES ---
     if pestana == "📈 Visión General y Tendencias":
         col_izq, col_der = st.columns([6, 4])
-
         with col_izq:
             st.subheader(f"📈 Evolución Temporal ({anio_sel} - {mes_sel})")
             if not df_tendencias.empty and "Volumen_Mensual" in df_tendencias.columns:
@@ -129,7 +126,6 @@ try:
                 st.plotly_chart(fig_linea, use_container_width=True)
             else:
                 st.info("No hay datos de tendencias para los filtros seleccionados.")
-
         with col_der:
             st.subheader("🔥 Top Incidentes (Filtrado)")
             if not df_top.empty and "Total_Incidentes" in df_top.columns:
@@ -146,7 +142,6 @@ try:
     # --- VISTA 2: BRECHAS Y GARANTÍAS ---
     elif pestana == "🛡️ Análisis de Brechas y Hardware":
         col_g1, col_g2 = st.columns([1, 1])
-
         with col_g1:
             st.subheader("⚖️ Volumen por Hardware (Filtrado)")
             if not df_brechas.empty:
@@ -159,7 +154,6 @@ try:
                 st.plotly_chart(fig_hw, use_container_width=True)
             else:
                 st.warning("No hay datos para esta combinación de filtros.")
-
         with col_g2:
             st.subheader("⭐ CSAT vs Tiempo Perdido")
             if not df_brechas.empty:
@@ -175,18 +169,14 @@ try:
     # --- VISTA 3: DRILL-DOWN ---
     elif pestana == "🔎 Detalle y Drill-Down de Equipos":
         st.subheader("🔍 Explorador de Detalle")
-        
-        # El combo ahora solo muestra los equipos que han sobrevivido a los filtros de la izquierda
         hardware_filtrado_disponible = sorted(df_brechas["tipo_hardware"].unique().tolist()) if not df_brechas.empty else []
         
         if not hardware_filtrado_disponible:
             st.warning("Los filtros actuales de la izquierda no dejaron ningún hardware disponible.")
         else:
             equipo_seleccionado = st.selectbox("👉 Elija un Equipo para ver su Ficha:", options=hardware_filtrado_disponible)
-
             if equipo_seleccionado:
                 df_detalle_eq = df_brechas[df_brechas["tipo_hardware"] == equipo_seleccionado]
-
                 col_d1, col_d2, col_d3 = st.columns(3)
                 tot_inc_eq = df_detalle_eq["Volumen_Incidentes"].sum()
                 min_perd_eq = df_detalle_eq["Minutos_Perdidos_Soporte"].sum()
@@ -195,7 +185,6 @@ try:
                 col_d1.metric(f"Incidentes", f"{tot_inc_eq:,}")
                 col_d2.metric("Minutos Perdidos", f"{min_perd_eq:,} min")
                 col_d3.metric("CSAT Promedio", f"{csat_eq:.2f} / 5.0")
-
                 st.dataframe(df_detalle_eq.style.highlight_max(axis=0, color="#ffcccc"), use_container_width=True)
 
 except Exception as e:
