@@ -7,7 +7,7 @@ from prophet import Prophet
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="Dashboard Gerencial ITSM!",
+    page_title="Dashboard Gerencial ITSM",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -85,7 +85,7 @@ try:
         if 'estado_garantia' in df_top.columns: df_top = df_top[df_top['estado_garantia'].isin(garantia_sel)]
 
     # --- CABECERA PRINCIPAL ---
-    st.title("📊 Dashboard Ejecutivo ITSM & Analítica Predictiva")
+    st.title("📊 Dashboard Ejecutivo ITSM & Analítica Predictiva V1.0")
     st.caption("Visión integrada de incidentes, infraestructura y pronóstico de demanda institucional")
     st.markdown("---")
 
